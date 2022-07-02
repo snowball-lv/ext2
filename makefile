@@ -30,14 +30,27 @@ clean:
 
 $(IMG):
 	mkdir root
-	./genfile.rb 1 >root/blocks-1.txt
-	./genfile.rb 5 >root/blocks-5.txt
-	./genfile.rb 100 >root/blocks-100.txt
-	genext2fs -b $$((128 * 1024)) -d root $(IMG)
+	dd bs=1024 count=1 if=/dev/urandom of=root/blocks-one.bin
+	dd bs=1024 count=5 if=/dev/urandom of=root/blocks-direct.bin
+	./genfile.rb 5 >root/blocks.txt
+	echo hello >root/file.txt
+	touch root/tmp.bin
+	genext2fs -b $$((16 * 1024)) -d root $(IMG)
+
+test-read:
+	$(BIN) $(IMG) cat /file.txt | diff - root/file.txt
+	$(BIN) $(IMG) cat /blocks-one.bin | diff - root/blocks-one.bin
+	$(BIN) $(IMG) cat /blocks-direct.bin | diff - root/blocks-direct.bin
+
+test-write:
+	cat root/blocks-one.bin | $(BIN) $(IMG) write /tmp.bin
+	$(BIN) $(IMG) cat /tmp.bin | diff - root/blocks-one.bin
+	cat root/blocks-direct.bin | $(BIN) $(IMG) write /tmp.bin
+	$(BIN) $(IMG) cat /tmp.bin | diff - root/blocks-direct.bin
 
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
-	$(BIN) $(IMG) cat /file.txt
-	cat root/blocks-100.txt | $(BIN) $(IMG) write /file.txt
+	$(BIN) $(IMG) create hello.txt
 	$(BIN) $(IMG) ls /
-	$(BIN) $(IMG) cat /file.txt
+	echo hello | $(BIN) $(IMG) write hello.txt
+	$(BIN) $(IMG) cat hello.txt

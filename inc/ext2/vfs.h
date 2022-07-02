@@ -23,6 +23,7 @@ struct Vnode {
     int (*find)(Vnode *parent, Vnode *dst, char *name);
     int (*readdir)(Vnode *parent, DirEnt *dst, int index);
     int (*create)(Vnode *parent, char *name);
+    int (*truncate)(Vnode *vn);
 };
 
 int vfsread(Vnode *vn, void *dst, int off, int count);
@@ -31,3 +32,4 @@ int vfsfind(Vnode *parent, Vnode *dst, char *name);
 int vfsresolve(Vnode *parent, Vnode *dst, char *path);
 int vfsreaddir(Vnode *parent, DirEnt *dst, int index);
 int vfscreate(Vnode *parent, char *path);
+int vfstruncate(Vnode *vn);

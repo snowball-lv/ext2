@@ -63,6 +63,7 @@ typedef struct {
     uint32_t inodesz;
     uint32_t blocksz;
     uint32_t numgroups;
+    uint32_t ppb; // pointers per block
 } Ext2;
 
 typedef struct {

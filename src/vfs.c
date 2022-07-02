@@ -59,3 +59,8 @@ int vfscreate(Vnode *parent, char *path) {
     }
     return 0;
 }
+
+int vfstruncate(Vnode *vn) {
+    if (!vn->truncate) return -1;
+    return vn->truncate(vn);
+}

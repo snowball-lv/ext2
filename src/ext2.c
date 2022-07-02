@@ -61,6 +61,7 @@ static int readsb(Ext2 *ext2) {
     ext2->inodesz = ext2->sb.revmajor > REV_0 ? ext2->sb.inodesz : 128;
     ext2->numgroups = (ext2->sb.numblocks + ext2->sb.blockspergroup - 1)
             / ext2->sb.blockspergroup;
+    ext2->ppb = ext2->blocksz / 4;
     return 0;
 }
 
@@ -148,26 +149,22 @@ static int allocblock(Ext2 *ext2) {
     int block = -1;
     for (int gi = 0; gi < ext2->numgroups; gi++) {
         Group g;
-        if (readgroup(ext2, &g, gi)) {
-            freememblock(bitmap);
-            return -1;
-        }
+        if (readgroup(ext2, &g, gi)) goto end;
         if (!g.freeblocks) continue;
-        if (readblock(ext2, g.blockbitmap, bitmap)) {
-            freememblock(bitmap);
-            return -1;
-        }
+        if (readblock(ext2, g.blockbitmap, bitmap)) goto end;
         for (int i = 0; i < ext2->sb.blockspergroup; i++) {
-            if (!testbit(bitmap, i)) {
-                block = ext2->sb.firstblock + gi * ext2->sb.blockspergroup + i;
-                ext2->sb.numfreeblocks--;
-                g.freeblocks--;
-                setbit(bitmap, i);
-                if (flushsb(ext2)) return -1;
-                if (flushgroup(ext2, gi, &g)) return -1;
-                if (writeblock(ext2, g.blockbitmap, bitmap)) return -1;
-                goto end;
-            }
+            if (testbit(bitmap, i)) continue;
+            // set changes
+            ext2->sb.numfreeblocks--;
+            g.freeblocks--;
+            setbit(bitmap, i);
+            // flush changes
+            if (flushsb(ext2)) goto end;
+            if (flushgroup(ext2, gi, &g)) goto end;
+            if (writeblock(ext2, g.blockbitmap, bitmap)) goto end;
+            // set found block number
+            block = ext2->sb.firstblock + gi * ext2->sb.blockspergroup + i;
+            goto end;
         }
     }
 end:
@@ -177,75 +174,6 @@ end:
 
 static void freeblock(Ext2 *ext2, int block) {
     // TODO
-}
-
-static int power(int base, int exp) {
-    if (exp == 0) return 1;
-    return base * power(base, exp - 1);
-}
-
-static int getindirect(Ext2 *ext2, int block, int depth, int idx) {
-    int ppb = ext2->blocksz / 4; // pointers per block
-    uint32_t *tmp = allocmemblock(ext2);
-    while (depth >= 0) {
-        if (readblock(ext2, block, tmp)) {
-            freememblock(tmp);
-            return -1;
-        }
-        block = tmp[idx / power(ppb, depth)];
-        idx %= power(ppb, depth);
-        depth--;
-    }
-    freememblock(tmp);
-    return block;
-}
-
-static int powersum(int base, int exp) {
-    if (!exp) return 0;
-    return power(base, exp) + powersum(base, exp - 1);
-}
-
-static int getinodeblock(Ext2 *ext2, Inode *inode, int idx) {
-    uint64_t size = inodesize(inode);
-    if (idx * ext2->blocksz >= size) return -1;
-    if (idx < 12) return inode->blocks[idx];
-    int ppb = ext2->blocksz / 4; // pointers per block
-    if (idx < 12 + powersum(ppb, 1)) {
-        return getindirect(ext2, inode->blocks[12], 0, idx - 12);
-    }
-    else if (idx < 12 + powersum(ppb, 2)) {
-        return getindirect(ext2, inode->blocks[13], 1, idx - 12 - powersum(ppb, 1));
-    }
-    else if (idx < 12 + powersum(ppb, 3)) {
-        return getindirect(ext2, inode->blocks[14], 2, idx - 12 - powersum(ppb, 2));
-    }
-    return -1;
-}
-
-static int ext2read(Vnode *vn, void *dst, int off, int count) {
-    Ext2 *ext2 = vn->device;
-    Inode inode;
-    if (readinode(ext2, &inode, vn->vnum))
-        return -1;
-    if (!(inode.mode & EXT2_S_IFREG))
-        return -1;
-    uint64_t isz = inodesize(&inode);
-    if (off >= isz) return 0;
-    if (count <= 0) return 0;
-    if (off + count > isz) count = isz - off;
-    char *tmp = allocmemblock(ext2);
-    int localblock = off / ext2->blocksz;
-    int absblock = getinodeblock(ext2, &inode, localblock);
-    if (absblock < 0 || readblock(ext2, absblock, tmp)) {
-        freememblock(tmp);
-        return -1;
-    }
-    int blockoff = off % ext2->blocksz;
-    int blockrem = ext2->blocksz - blockoff;
-    int len = blockrem < count ? blockrem : count;
-    memcpy(dst, &tmp[blockoff], len);
-    freememblock(tmp);
-    return len;
 }
 
 static int writeinode(Ext2 *ext2, uint32_t inum, Inode *src) {
@@ -270,81 +198,97 @@ static int writeinode(Ext2 *ext2, uint32_t inum, Inode *src) {
     return 0;
 }
 
-static int allocinodeblock(Ext2 *ext2, Inode *inode, int relblock) {
-    printf("allocating #%i\n", relblock);
-    int block = allocblock(ext2);
-    int ppb = ext2->blocksz / 4; // pointers per block
-    if (block < 0)
-        return -1;
-    if (relblock < 12) {
-        if (inode->blocks[relblock])
+static int getinodeblock(Ext2 *ext2, uint32_t inum, int idx, int create) {
+    if (idx < 0) return -1;
+    Inode inode;
+    if (readinode(ext2, &inode, inum)) return -1;
+    if (idx * ext2->blocksz >= inodesize(&inode) && !create) return -1;
+    if (idx < 12) {
+        int block = inode.blocks[idx];
+        if (!block && create) {
+            block = allocblock(ext2);
+            if (block < 0) return -1;
+            inode.blocks[idx] = block;
+            if (writeinode(ext2, inum, &inode)) {
+                freeblock(ext2, block);
+                return -1;
+            }
+        }
+        else if (!block) {
             return -1;
-        inode->blocks[relblock] = block;
-        return 0;
+        }
+        return block;
     }
-    else if (relblock < 12 + powersum(ppb, 1)) {
-        // TODO
-    }
-    freeblock(ext2, block);
+    printf("*** file too big\n");
     return -1;
 }
 
-static int truncate(Ext2 *ext2, uint32_t inum, int size) {
+static int ext2read(Vnode *vn, void *dst, int off, int count) {
+    Ext2 *ext2 = vn->device;
     Inode inode;
-    if (readinode(ext2, &inode, inum))
+    if (readinode(ext2, &inode, vn->vnum))
         return -1;
-    int oldsize = inodesize(&inode);
-    printf("%i -> %i\n", oldsize, size);
-    int numoldblocks = (oldsize + ext2->blocksz - 1) / ext2->blocksz;
-    int numnewblocks = (size + ext2->blocksz - 1) / ext2->blocksz;
-    // printf("numoldblocks %i\n", numoldblocks);
-    // printf("numnewblocks %i\n", numnewblocks);
-    while (numoldblocks < numnewblocks) {
-        if (allocinodeblock(ext2, &inode, numoldblocks))
-            return -1;
-        numoldblocks++;
+    // if (!(inode.mode & EXT2_S_IFREG))
+    //     return -1;
+    uint64_t isz = inodesize(&inode);
+    if (off >= isz) return 0;
+    if (count <= 0) return 0;
+    count = off + count < isz ? count : isz - off;
+    int end = off + count;
+    char *tmp = allocmemblock(ext2);
+    while (off < end) {
+        int relblock = off / ext2->blocksz;
+        int absblock = getinodeblock(ext2, vn->vnum, relblock, 0);
+        if (absblock < 0) goto error;
+        if (readblock(ext2, absblock, tmp)) goto error;
+        int blockoff = off % ext2->blocksz;
+        int blockrem = ext2->blocksz - blockoff;
+        int len = blockrem < end - off ? blockrem : end - off;
+        memcpy(dst, &tmp[blockoff], len);
+        off += len;
+        dst += len;
     }
-    setinodesize(&inode, size);
-    if (writeinode(ext2, inum, &inode))
+    freememblock(tmp);
+    return count;
+error:
+    freememblock(tmp);
+    return -1;
+}
+
+static int ext2truncate(Vnode *vn) {
+    Ext2 *ext2 = vn->device;
+    Inode inode;
+    if (readinode(ext2, &inode, vn->vnum))
+        return -1;
+    setinodesize(&inode, 0);
+    inode.sectors = 0;
+    memset(inode.blocks, 0, sizeof(inode.blocks));
+    if (writeinode(ext2, vn->vnum, &inode))
         return -1;
     return 0;
 }
 
 static int ext2write(Vnode *vn, int off, int count, void *src) {
     Ext2 *ext2 = vn->device;
-
-    // void *tmpbuf = allocmemblock(ext2);
-    // for (int i = 0; i < 1; i++) {
-    //     int block = allocblock(ext2);
-    //     if (block < 0) return -1;
-    //     if (readblock(ext2, block, tmpbuf)) return -1;
-    //     memset(tmpbuf, 0, ext2->blocksz);
-    //     if (writeblock(ext2, block, tmpbuf)) return -1;
-    //     printf("allocated #%i\n", block);
-    // }
-    // freememblock(tmpbuf);
-    // return count;
-
     int blockoff = off % ext2->blocksz;
     int blockrem = ext2->blocksz - blockoff;
     count = blockrem < count ? blockrem : count;
     Inode inode;
     if (readinode(ext2, &inode, vn->vnum))
         return -1;
-    if (!(inode.mode & EXT2_S_IFREG))
-        return -1;
-    if (off + count > inodesize(&inode)) {
-        if (truncate(ext2, vn->vnum, off + count))
-            return -1;
-        if (readinode(ext2, &inode, vn->vnum))
-            return -1;
-    }
+    // if (!(inode.mode & EXT2_S_IFREG)) {
+    //     printf("*** [%s] not a regular file\n", vn->name);
+    //     return -1;
+    // }
     int relblock = off / ext2->blocksz;
-    int absblock = getinodeblock(ext2, &inode, relblock);
+    int absblock = getinodeblock(ext2, vn->vnum, relblock, 1);
     if (absblock < 0) {
         printf("*** block #%i doesn't exist\n", relblock);
         return -1;
     }
+    // refresh inode
+    if (readinode(ext2, &inode, vn->vnum))
+        return -1;
     char *tmp = allocmemblock(ext2);
     if (readblock(ext2, absblock, tmp)) {
         freememblock(tmp);
@@ -367,38 +311,23 @@ static int ext2write(Vnode *vn, int off, int count, void *src) {
 static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum);
 
 static int ext2readdir(Vnode *parent, DirEnt *dst, int index) {
-    Ext2 *ext2 = parent->device;
-    Inode inode;
-    if (readinode(ext2, &inode, parent->vnum))
-        return -1;
-    if (!(inode.mode & EXT2_S_IFDIR))
-        return -1;
+    struct {
+        Ext2DirEnt de;
+        char namebuf[MAX_NAME];
+    } s;
     int i = 0;
-    int offset = 0;
-    uint8_t *tmp = allocmemblock(ext2);
-    uint64_t isz = inodesize(&inode);
-    while (offset < isz) {
-        int block = getinodeblock(ext2, &inode, offset / ext2->blocksz);
-        if (block < 0 || readblock(ext2, block, tmp)) {
-            freememblock(tmp);
-            return -1;
+    int off = 0;
+    int r;
+    while ((r = ext2read(parent, &s.de, off, sizeof(Ext2DirEnt) + MAX_NAME))) {
+        if (i == index) {
+            memcpy(dst->name, s.de.name, s.de.namelen);
+            dst->name[s.de.namelen] = 0;
+            dst->vnum = s.de.inum;
+            return 0;
         }
-        offset += ext2->blocksz;
-        int boff = 0;
-        while (boff < ext2->blocksz) {
-            Ext2DirEnt *de = (void *)&tmp[boff];
-            if (i == index) {
-                memcpy(dst->name, de->name, de->namelen);
-                dst->name[de->namelen] = 0;
-                dst->vnum = de->inum;
-                freememblock(tmp);
-                return 0;
-            }
-            boff += de->reclen;
-            i++;
-        }
+        off += s.de.reclen;
+        i++;
     }
-    freememblock(tmp);
     return -1;
 }
 
@@ -473,39 +402,29 @@ static void fillinode(Inode *dst) {
 }
 
 static int mkentry(Vnode *parent, char *name, uint32_t inum) {
-    // Ext2 *ext2 = parent->device;
-    // Inode inode;
-    // if (readinode(ext2, &inode, parent->vnum))
-    //     return -1;
-    // if (!(inode.mode & EXT2_S_IFDIR))
-    //     return -1;
-    // int i = 0;
-    // int offset = 0;
-    // uint8_t *tmp = allocmemblock(ext2);
-    // uint64_t isz = inodesize(&inode);
-    // while (offset < isz) {
-    //     int block = getinodeblock(ext2, &inode, offset / ext2->blocksz);
-    //     if (block < 0 || readblock(ext2, block, tmp)) {
-    //         freememblock(tmp);
-    //         return -1;
-    //     }
-    //     offset += ext2->blocksz;
-    //     int boff = 0;
-    //     while (boff < ext2->blocksz) {
-    //         Ext2DirEnt *de = (void *)&tmp[boff];
-    //         if (i == index) {
-    //             memcpy(dst->name, de->name, de->namelen);
-    //             dst->name[de->namelen] = 0;
-    //             dst->vnum = de->inum;
-    //             freememblock(tmp);
-    //             return 0;
-    //         }
-    //         boff += de->reclen;
-    //         i++;
-    //     }
-    // }
-    // freememblock(tmp);
-    return -1;
+    Ext2 *ext2 = parent->device;
+    Inode inode;
+    if (readinode(ext2, &inode, parent->vnum))
+        return -1;
+    if (!(inode.mode & EXT2_S_IFDIR))
+        return -1;
+    int namelen = strlen(name);
+    int reclen = sizeof(Ext2DirEnt) + namelen;
+    struct {
+        Ext2DirEnt de;
+        char namebuf[MAX_NAME];
+    } s;
+    s.de.inum = inum;
+    s.de.reclen = reclen;
+    s.de.namelen = namelen;
+    s.de.filetype = 0;
+    memcpy(s.de.name, name, namelen);
+    int w = ext2write(parent, inodesize(&inode), reclen, &s.de);
+    if (w != reclen) {
+        printf("*** wrote %i of %i\n", w, reclen);
+        return -1;
+    }
+    return 0;
 }
 
 static int ext2create(Vnode *parent, char *name) {
@@ -525,6 +444,7 @@ static int ext2create(Vnode *parent, char *name) {
         return -1;
     }
     if (mkentry(parent, name, inum)) {
+        printf("*** couldn't make entry\n");
         freeinode(ext2, inum);
         return -1;
     }
@@ -545,70 +465,8 @@ static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     dst->find = ext2find;
     dst->readdir = ext2readdir;
     dst->create = ext2create;
+    dst->truncate = ext2truncate;
     return 0;
-}
-
-static int blocktogroup(Ext2 *ext2, int block) {
-    if (block < ext2->sb.firstblock)
-        return -1;
-    return (block - ext2->sb.firstblock) / ext2->sb.blockspergroup;
-}
-
-static int groupblock(Ext2 *ext2, int absblock) {
-    return (absblock - ext2->sb.firstblock) % ext2->sb.blockspergroup;
-}
-
-static void checkused(Ext2 *ext2, int absblock) {
-    int gi = blocktogroup(ext2, absblock);
-    if (gi < 0) {
-        printf("*** can't use block #%i\n", absblock);
-        return;
-    }
-    Group g;
-    if (readgroup(ext2, &g, gi)) {
-        printf("*** couldn't read group\n");
-        return;
-    }
-    uint8_t *bitmap = allocmemblock(ext2);
-    if (readblock(ext2, g.blockbitmap, bitmap)) {
-        printf("*** couldn't read block bitmap\n");
-        freememblock(bitmap);
-        return;
-    }
-    int relblock = groupblock(ext2, absblock);
-    if (!testbit(bitmap, relblock)) {
-        printf("*** #%i not marked used\n", absblock);
-    }
-    freememblock(bitmap);
-}
-
-static void check(Ext2 *ext2, Vnode *vn) {
-    // printf("checking [%li][%s]\n", vn->vnum, vn->name);
-    Inode inode;
-    if (readinode(ext2, &inode, vn->vnum))
-        return;
-    int off = 0;
-    while (off < inodesize(&inode)) {
-        int relblock = off / ext2->blocksz;
-        int absblock = getinodeblock(ext2, &inode, relblock);
-        if (absblock < 0) {
-            printf("*** bad block\n");
-            return;
-        }
-        checkused(ext2, absblock);
-        off += ext2->blocksz;
-    }
-    if (inode.mode & EXT2_S_IFDIR) {
-        DirEnt de;
-        int i = 2;
-        while (ext2readdir(vn, &de, i++) == 0) {
-            // printf("[%s]\n", de.name);
-            Vnode e;
-            fillvnode(ext2, &e, de.vnum);
-            strcpy(e.name, de.name);
-            check(ext2, &e);
-        }
-    }
 }
 
 int mkext2(Vnode *dst, Vnode *bdev) {
@@ -620,8 +478,5 @@ int mkext2(Vnode *dst, Vnode *bdev) {
     if (fillvnode(ext2, dst, 2))
         return -1;
     strcpy(dst->name, "[root]");
-    printf("checking...\n");
-    check(ext2, dst);
-    printf("done.\n");
     return 0;
 }

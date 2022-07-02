@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <ext2/vfs.h>
 #include <ext2/fdev.h>
 #include <ext2/ext2.h>
@@ -39,16 +40,13 @@ static void cat(Vnode *root, int argc, char **argv) {
         printf("*** no such file [%s]\n", path);
         exit(1);
     }
-    char buf[256];
+    char buf[4096];
     int off = 0;
     int n;
     while ((n = vfsread(&file, buf, off, sizeof(buf))) > 0) {
-        for (int i = 0; i < n; i++)
-            if (buf[i]) printf("%c", buf[i]);
-        // printf("%.*s", n, buf);
+        fwrite(buf, 1, n, stdout);
         off += n;
     }
-    printf("\n");
 }
 
 static void create(Vnode *root, int argc, char **argv) {
@@ -72,6 +70,10 @@ static void write(Vnode *root, int argc, char **argv) {
     Vnode file;
     if (vfsresolve(root, &file, path)) {
         printf("*** no such file [%s]\n", path);
+        exit(1);
+    }
+    if (vfstruncate(&file)) {
+        printf("*** couldn't truncate [%s]\n", path);
         exit(1);
     }
     char buf[256];

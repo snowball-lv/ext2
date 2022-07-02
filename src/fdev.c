@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <string.h>
-#include <ext2/vfs.h>
 #include <errno.h>
+#include <stdint.h>
+#include <ext2/vfs.h>
 #include <ext2/ext2.h>
 
 static int fdevread(Vnode *vn, void *dst, int off, int count) {
