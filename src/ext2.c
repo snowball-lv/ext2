@@ -319,14 +319,15 @@ static int ext2readdir(Vnode *parent, DirEnt *dst, int index) {
     int off = 0;
     int r;
     while ((r = ext2read(parent, &s.de, off, sizeof(Ext2DirEnt) + MAX_NAME))) {
-        if (i == index) {
+        if (s.de.inum && i == index) {
             memcpy(dst->name, s.de.name, s.de.namelen);
             dst->name[s.de.namelen] = 0;
             dst->vnum = s.de.inum;
             return 0;
         }
         off += s.de.reclen;
-        i++;
+        if (s.de.inum)
+            i++;
     }
     return -1;
 }
@@ -451,6 +452,66 @@ static int ext2create(Vnode *parent, char *name) {
     return 0;
 }
 
+static int unlink(Ext2 *ext2, uint32_t inum) {
+    return -1;
+}
+
+int ext2unlink(Vnode *parent, char *name) {
+    int rv = -1;
+    Ext2 *ext2 = parent->device;
+    Inode inode;
+    if (readinode(ext2, &inode, parent->vnum))
+        return -1;
+    int off = 0;
+    int size = inodesize(&inode);
+    char *tmp = allocmemblock(ext2);
+    int namelen = strlen(name);
+    Ext2DirEnt *prev = 0;
+    Ext2DirEnt *target = 0;
+    int absblock = 0;
+    int boff = 0;
+    while (off < size) {
+        int relblock = off / ext2->blocksz;
+        absblock = getinodeblock(ext2, parent->vnum, relblock, 0);
+        if (absblock < 0) goto end;
+        if (readblock(ext2, absblock, tmp)) goto end;
+        prev = 0;
+        target = 0;
+        boff = 0;
+        while (boff < ext2->blocksz) {
+            Ext2DirEnt *de = (void *)&tmp[boff];
+            if (de->namelen == namelen) {
+                if (strncmp(de->name, name, namelen) == 0) {
+                    target = de;
+                    goto found;
+                }
+            }
+            prev = de;
+            boff += de->reclen;
+        }
+        off += ext2->blocksz;
+    }
+found:
+    printf("found!\n");
+    if (prev) printf("prev [%.*s]\n", prev->namelen, prev->name);
+    printf("target [%.*s]\n", target->namelen, target->name);
+    if (prev) {
+        prev->reclen += target->reclen;
+        if (writeblock(ext2, absblock, tmp)) goto end;
+        rv = 0;
+    }
+    else {
+        target->namelen = 0;
+        target->inum = 0;
+        if (writeblock(ext2, absblock, tmp)) goto end;
+        rv = 0;
+    }
+end:
+    freememblock(ext2);
+    return rv;
+}
+
+
 static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     Inode inode;
     if (readinode(ext2, &inode, inum))
@@ -466,6 +527,7 @@ static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     dst->readdir = ext2readdir;
     dst->create = ext2create;
     dst->truncate = ext2truncate;
+    dst->unlink = ext2unlink;
     return 0;
 }
 

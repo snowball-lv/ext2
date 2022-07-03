@@ -51,6 +51,11 @@ test-write:
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
 	$(BIN) $(IMG) create hello.txt
+	$(BIN) $(IMG) create a.txt
+	$(BIN) $(IMG) create b.txt
+	$(BIN) $(IMG) create c.txt
 	$(BIN) $(IMG) ls /
 	echo hello | $(BIN) $(IMG) write hello.txt
 	$(BIN) $(IMG) cat hello.txt
+	$(BIN) $(IMG) unlink hello.txt
+	$(BIN) $(IMG) ls /

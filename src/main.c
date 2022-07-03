@@ -89,6 +89,18 @@ static void write(Vnode *root, int argc, char **argv) {
     }
 }
 
+static void unlink(Vnode *root, int argc, char **argv) {
+    if (!argc) {
+        printf("*** unlink requires path\n");
+        exit(1);
+    }
+    char *path = argv[0];
+    if (vfsunlink(root, path)) {
+        printf("*** couldn't unlink [%s]\n", path);
+        exit(1);
+    }
+}
+
 typedef struct {
     char *name;
     void (*func)(Vnode *root, int argc, char **argv);
@@ -99,6 +111,7 @@ static Cmd CMDTAB[] = {
     {"cat", cat},
     {"create", create},
     {"write", write},
+    {"unlink", unlink},
     {0},
 };
 

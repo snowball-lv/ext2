@@ -64,3 +64,8 @@ int vfstruncate(Vnode *vn) {
     if (!vn->truncate) return -1;
     return vn->truncate(vn);
 }
+
+int vfsunlink(Vnode *parent, char *name) {
+    if (!parent->unlink) return -1;
+    return parent->unlink(parent, name);
+}
