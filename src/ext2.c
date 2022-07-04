@@ -25,6 +25,11 @@
 
 #define EXT2_S_IFDIR 0x4000
 #define EXT2_S_IFREG 0x8000
+#define EXT2_S_IFLNK 0xa000
+
+static int hasformat(int mode, int format) {
+    return (mode & format) == format;
+}
 
 static uint64_t inodesize(Inode *inode) {
     return inode->size;
@@ -379,6 +384,7 @@ end:
 }
 
 static void freeinode(Ext2 *ext2, uint32_t inum) {
+    printf("freeing inode %u\n", inum);
     // TODO
 }
 
@@ -404,12 +410,22 @@ static void fillinode(Inode *dst) {
     // dst->osval2 = 0;
 }
 
+static int inclinks(Ext2 *ext2, uint32_t inum) {
+    Inode inode;
+    if (readinode(ext2, &inode, inum))
+        return -1;
+    inode.numlinks++;
+    if (writeinode(ext2, inum, &inode))
+        return -1;
+    return 0;
+}
+
 static int mkentry(Vnode *parent, char *name, uint32_t inum) {
     Ext2 *ext2 = parent->device;
     Inode inode;
     if (readinode(ext2, &inode, parent->vnum))
         return -1;
-    if (!(inode.mode & EXT2_S_IFDIR))
+    if (!hasformat(inode.mode, EXT2_S_IFDIR))
         return -1;
     int namelen = strlen(name);
     int reclen = sizeof(Ext2DirEnt) + namelen;
@@ -427,6 +443,8 @@ static int mkentry(Vnode *parent, char *name, uint32_t inum) {
         printf("*** wrote %i of %i\n", w, reclen);
         return -1;
     }
+    if (inclinks(ext2, inum))
+        return -1;
     return 0;
 }
 
@@ -449,6 +467,7 @@ static int ext2create(Vnode *parent, char *name, int isdir) {
     }
     fillinode(&inode);
     inode.mode = isdir ? EXT2_S_IFDIR : EXT2_S_IFREG;
+    inode.numlinks = 0;
     if (writeinode(ext2, inum, &inode)) {
         freeinode(ext2, inum);
         return -1;
@@ -469,6 +488,10 @@ static int ext2create(Vnode *parent, char *name, int isdir) {
 }
 
 int ext2unlink(Vnode *parent, char *name) {
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+        printf("*** can't unlink special entries\n");
+        return -1;
+    }
     int rv = -1;
     Ext2 *ext2 = parent->device;
     Inode inode;
@@ -532,6 +555,24 @@ end:
     return rv;
 }
 
+int ext2symlink(Vnode *parent, char *name, char *value) {
+    printf("creating symlink [%s] -> [%s]\n", name, value);
+    if (ext2create(parent, name, 0))
+        return -1;
+    Vnode vn;
+    Inode i;
+    if (ext2find(parent, &vn, name))
+        return -1;
+    if (readinode(parent->device, &i, vn.vnum))
+        return -1;
+    i.mode = EXT2_S_IFLNK;
+    if (writeinode(parent->device, vn.vnum, &i))
+        return -1;
+    int len = strlen(value);
+    if (ext2write(&vn, 0, len, value) != len)
+        return -1;
+    return 0;
+}
 
 static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     Inode inode;
@@ -549,6 +590,7 @@ static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     dst->create = ext2create;
     dst->truncate = ext2truncate;
     dst->unlink = ext2unlink;
+    dst->symlink = ext2symlink;
     return 0;
 }
 

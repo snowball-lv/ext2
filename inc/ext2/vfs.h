@@ -4,6 +4,7 @@
 
 #define VFS_FILE 0x8000
 #define VFS_DIR  0x4000
+#define VFS_LINK 0xa000
 
 typedef int64_t Vnum;
 typedef struct Vnode Vnode;
@@ -25,14 +26,16 @@ struct Vnode {
     int (*create)(Vnode *parent, char *name, int isdir);
     int (*truncate)(Vnode *vn);
     int (*unlink)(Vnode *parent, char *name);
+    int (*symlink)(Vnode *parent, char *name, char *value);
 };
 
 int vfsread(Vnode *vn, void *dst, int off, int count);
 int vfswrite(Vnode *vn, int off, int count, void *src);
 int vfsfind(Vnode *parent, Vnode *dst, char *name);
-int vfsresolve(Vnode *parent, Vnode *dst, char *path);
+int vfsresolve(Vnode *root, Vnode *parent, Vnode *dst, char *path);
 int vfsreaddir(Vnode *parent, DirEnt *dst, int index);
 int vfscreate(Vnode *parent, char *path, int isdir);
 int vfstruncate(Vnode *vn);
-int vfsunlink(Vnode *parent, char *name);
+int vfsunlink(Vnode *parent, char *path);
 int vfsmkdir(Vnode *parent, char *path);
+int vfssymlink(Vnode *parent, char *path, char *value);

@@ -17,11 +17,11 @@ static void ls(Vnode *root, int argc, char **argv) {
     }
     char *path = argv[0];
     Vnode dir;
-    if (vfsresolve(root, &dir, path)) {
+    if (vfsresolve(root, root, &dir, path)) {
         printf("*** no such file [%s]\n", path);
         exit(1);
     }
-    if (!(dir.flags & VFS_DIR)) {
+    if ((dir.flags & VFS_DIR) != VFS_DIR) {
         printf("*** not a dir [%s]\n", path);
         exit(1);
     }
@@ -41,7 +41,7 @@ static void cat(Vnode *root, int argc, char **argv) {
     }
     char *path = argv[0];
     Vnode file;
-    if (vfsresolve(root, &file, path)) {
+    if (vfsresolve(root, root, &file, path)) {
         printf("*** no such file [%s]\n", path);
         exit(1);
     }
@@ -73,7 +73,7 @@ static void write(Vnode *root, int argc, char **argv) {
     }
     char *path = argv[0];
     Vnode file;
-    if (vfsresolve(root, &file, path)) {
+    if (vfsresolve(root, root, &file, path)) {
         printf("*** no such file [%s]\n", path);
         exit(1);
     }
@@ -106,7 +106,6 @@ static void unlink(Vnode *root, int argc, char **argv) {
     }
 }
 
-
 static void mkdir(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** mkdir requires path\n");
@@ -114,6 +113,19 @@ static void mkdir(Vnode *root, int argc, char **argv) {
     }
     char *path = argv[0];
     if (vfscreate(root, path, 1)) {
+        printf("*** couldn't create [%s]\n", path);
+        exit(1);
+    }
+}
+
+static void symlink(Vnode *root, int argc, char **argv) {
+    if (argc < 2) {
+        printf("*** symlink requires path and value\n");
+        exit(1);
+    }
+    char *path = argv[0];
+    char *value = argv[1];
+    if (vfssymlink(root, path, value)) {
         printf("*** couldn't create [%s]\n", path);
         exit(1);
     }
@@ -131,6 +143,7 @@ static Cmd CMDTAB[] = {
     {"write", write},
     {"unlink", unlink},
     {"mkdir", mkdir},
+    {"symlink", symlink},
     {0},
 };
 

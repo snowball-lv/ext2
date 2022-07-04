@@ -51,8 +51,14 @@ test-write:
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
 	$(BIN) $(IMG) create a/b/c/hello.txt
+	echo hello | $(BIN) $(IMG) write a/b/c/hello.txt
 	$(BIN) $(IMG) ls /
 	$(BIN) $(IMG) ls /a
 	$(BIN) $(IMG) ls /a/b
 	$(BIN) $(IMG) ls /a/b/c
-	$(BIN) $(IMG) ls /a/b/c/hello.txt
+	$(BIN) $(IMG) symlink /a/b/c/lnk-abs.txt /a/b/c/hello.txt
+	$(BIN) $(IMG) symlink /a/b/c/lnk-rel.txt hello.txt
+	$(BIN) $(IMG) ls /a/b/c
+	$(BIN) $(IMG) cat /a/b/c/hello.txt
+	$(BIN) $(IMG) cat /a/b/c/lnk-abs.txt
+	$(BIN) $(IMG) cat /a/b/c/lnk-rel.txt
