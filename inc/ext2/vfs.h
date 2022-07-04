@@ -1,6 +1,7 @@
 #pragma once
 
 #define MAX_NAME 256
+#define MAX_PATH 4096    
 
 #define VFS_FILE 0x8000
 #define VFS_DIR  0x4000
@@ -27,6 +28,7 @@ struct Vnode {
     int (*truncate)(Vnode *vn);
     int (*unlink)(Vnode *parent, char *name);
     int (*symlink)(Vnode *parent, char *name, char *value);
+    int (*link)(Vnode *old, Vnode *newdir, char *newname);
 };
 
 int vfsread(Vnode *vn, void *dst, int off, int count);
@@ -39,3 +41,4 @@ int vfstruncate(Vnode *vn);
 int vfsunlink(Vnode *parent, char *path);
 int vfsmkdir(Vnode *parent, char *path);
 int vfssymlink(Vnode *parent, char *path, char *value);
+int vfslink(Vnode *old, Vnode *newdir, char *newname);

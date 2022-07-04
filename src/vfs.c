@@ -36,12 +36,10 @@ int vfsresolve(Vnode *root, Vnode *parent, Vnode *dst, char *path) {
         if (vfsfind(&tmp, dst, name))
             return -1;
         if ((dst->flags & VFS_LINK) == VFS_LINK) {
-            printf("following link [%s]\n", name);
             char buf[1024];
             int len = vfsread(dst, buf, 0, sizeof(buf));
             if (len < 0) return -1;
             buf[len] = 0;
-            printf("link %i [%s]\n", len, buf);
             return vfsresolve(root, &tmp, dst, buf);
         }
         tmp = *dst;
@@ -125,8 +123,6 @@ int vfsunlink(Vnode *parent, char *path) {
     }
 found:
     if (name[0]) {
-        printf("prev %li\n", prev.vnum);
-        printf("unlinking [%s]\n", name);
         if (!prev.unlink) return -1;
         return prev.unlink(&prev, name);
     }
@@ -134,4 +130,9 @@ found:
     return -1;
 end:
     return -1;
+}
+
+int vfslink(Vnode *old, Vnode *newdir, char *newname) {
+    if (!old->link) return -1;
+    return old->link(old, newdir, newname);
 }

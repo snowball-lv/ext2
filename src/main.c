@@ -123,10 +123,56 @@ static void symlink(Vnode *root, int argc, char **argv) {
         printf("*** symlink requires path and value\n");
         exit(1);
     }
-    char *path = argv[0];
-    char *value = argv[1];
+    char *value = argv[0];
+    char *path = argv[1];
     if (vfssymlink(root, path, value)) {
         printf("*** couldn't create [%s]\n", path);
+        exit(1);
+    }
+}
+
+static int parsepath(char *dir, char *name, char *path) {
+    char *slash = strrchr(path, '/');
+    if (!slash) {
+        strcpy(dir, "/");
+        strcpy(name, path);
+        return 0;
+    }
+    int dirlen = slash - path;
+    strncpy(dir, path, dirlen);
+    dir[dirlen] = 0;
+    slash += 1;
+    int namelen = path + strlen(path) - slash;
+    strncpy(name, slash , namelen);
+    name[namelen] = 0;
+    return 0;
+}
+
+static void link(Vnode *root, int argc, char **argv) {
+    if (argc < 2) {
+        printf("*** link requires old and new path\n");
+        exit(1);
+    }
+    char *oldpath = argv[0];
+    char *newpath = argv[1];
+    Vnode oldvn;
+    Vnode newvn;
+    char newdir[MAX_PATH];
+    char newname[MAX_NAME];
+    if (vfsresolve(root, root, &oldvn, oldpath)) {
+        printf("*** couldn't resolve [%s]\n", oldpath);
+        exit(1);
+    }
+    if (parsepath(newdir, newname, newpath)) {
+        printf("*** couldn't parse new path\n");
+        exit(1);
+    }
+    if (vfsresolve(root, root, &newvn, newdir)) {
+        printf("*** couldn't resolve [%s]\n", newdir);
+        exit(1);
+    }
+    if (vfslink(&oldvn, &newvn, newname)) {
+        printf("*** couldn't create hard link [%s]\n", newpath);
         exit(1);
     }
 }
@@ -144,6 +190,7 @@ static Cmd CMDTAB[] = {
     {"unlink", unlink},
     {"mkdir", mkdir},
     {"symlink", symlink},
+    {"link", link},
     {0},
 };
 

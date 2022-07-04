@@ -455,11 +455,9 @@ static int ext2create(Vnode *parent, char *name, int isdir) {
         printf("*** parent not a dir\n");
         return -1;
     }
-    printf("ext2 create\n");
     Ext2 *ext2 = parent->device;
     uint32_t inum = allocinode(ext2);
     if (!inum) return -1;
-    printf("found free inode %i\n", inum);
     Inode inode;
     if (readinode(ext2, &inode, inum)) {
         freeinode(ext2, inum);
@@ -527,9 +525,6 @@ int ext2unlink(Vnode *parent, char *name) {
         off += ext2->blocksz;
     }
 found:;
-    // printf("found!\n");
-    // if (prev) printf("prev [%.*s]\n", prev->namelen, prev->name);
-    // printf("target [%.*s]\n", target->namelen, target->name);
     Inode tinode;
     if (readinode(ext2, &tinode, target->inum))
         goto end;
@@ -556,7 +551,6 @@ end:
 }
 
 int ext2symlink(Vnode *parent, char *name, char *value) {
-    printf("creating symlink [%s] -> [%s]\n", name, value);
     if (ext2create(parent, name, 0))
         return -1;
     Vnode vn;
@@ -572,6 +566,10 @@ int ext2symlink(Vnode *parent, char *name, char *value) {
     if (ext2write(&vn, 0, len, value) != len)
         return -1;
     return 0;
+}
+
+int ext2link(Vnode *old, Vnode *newdir, char *newname) {
+    return mkentry(newdir, newname, old->vnum);
 }
 
 static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
@@ -591,6 +589,7 @@ static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     dst->truncate = ext2truncate;
     dst->unlink = ext2unlink;
     dst->symlink = ext2symlink;
+    dst->link = ext2link;
     return 0;
 }
 
