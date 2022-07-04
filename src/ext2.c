@@ -311,6 +311,8 @@ static int ext2write(Vnode *vn, int off, int count, void *src) {
 static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum);
 
 static int ext2readdir(Vnode *parent, DirEnt *dst, int index) {
+    if (!(parent->flags & VFS_DIR))
+        return -1;
     struct {
         Ext2DirEnt de;
         char namebuf[MAX_NAME];
@@ -428,7 +430,13 @@ static int mkentry(Vnode *parent, char *name, uint32_t inum) {
     return 0;
 }
 
-static int ext2create(Vnode *parent, char *name) {
+static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum);
+
+static int ext2create(Vnode *parent, char *name, int isdir) {
+    if (!(parent->flags & VFS_DIR)) {
+        printf("*** parent not a dir\n");
+        return -1;
+    }
     printf("ext2 create\n");
     Ext2 *ext2 = parent->device;
     uint32_t inum = allocinode(ext2);
@@ -440,6 +448,7 @@ static int ext2create(Vnode *parent, char *name) {
         return -1;
     }
     fillinode(&inode);
+    inode.mode = isdir ? EXT2_S_IFDIR : EXT2_S_IFREG;
     if (writeinode(ext2, inum, &inode)) {
         freeinode(ext2, inum);
         return -1;
@@ -449,11 +458,14 @@ static int ext2create(Vnode *parent, char *name) {
         freeinode(ext2, inum);
         return -1;
     }
+    if (isdir) {
+        Vnode vn;
+        if (fillvnode(ext2, &vn, inum))
+            return -1;
+        mkentry(&vn, ".", inum);
+        mkentry(&vn, "..", parent->vnum);
+    }
     return 0;
-}
-
-static int unlink(Ext2 *ext2, uint32_t inum) {
-    return -1;
 }
 
 int ext2unlink(Vnode *parent, char *name) {
@@ -491,10 +503,19 @@ int ext2unlink(Vnode *parent, char *name) {
         }
         off += ext2->blocksz;
     }
-found:
-    printf("found!\n");
-    if (prev) printf("prev [%.*s]\n", prev->namelen, prev->name);
-    printf("target [%.*s]\n", target->namelen, target->name);
+found:;
+    // printf("found!\n");
+    // if (prev) printf("prev [%.*s]\n", prev->namelen, prev->name);
+    // printf("target [%.*s]\n", target->namelen, target->name);
+    Inode tinode;
+    if (readinode(ext2, &tinode, target->inum))
+        goto end;
+    tinode.numlinks--;
+    if (writeinode(ext2, target->inum, &tinode))
+        goto end;
+    if (tinode.numlinks == 0) { 
+        freeinode(ext2, target->inum);
+    }
     if (prev) {
         prev->reclen += target->reclen;
         if (writeblock(ext2, absblock, tmp)) goto end;

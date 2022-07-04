@@ -22,7 +22,7 @@ struct Vnode {
     int (*write)(Vnode *vn, int off, int count, void *src);
     int (*find)(Vnode *parent, Vnode *dst, char *name);
     int (*readdir)(Vnode *parent, DirEnt *dst, int index);
-    int (*create)(Vnode *parent, char *name);
+    int (*create)(Vnode *parent, char *name, int isdir);
     int (*truncate)(Vnode *vn);
     int (*unlink)(Vnode *parent, char *name);
 };
@@ -32,6 +32,7 @@ int vfswrite(Vnode *vn, int off, int count, void *src);
 int vfsfind(Vnode *parent, Vnode *dst, char *name);
 int vfsresolve(Vnode *parent, Vnode *dst, char *path);
 int vfsreaddir(Vnode *parent, DirEnt *dst, int index);
-int vfscreate(Vnode *parent, char *path);
+int vfscreate(Vnode *parent, char *path, int isdir);
 int vfstruncate(Vnode *vn);
 int vfsunlink(Vnode *parent, char *name);
+int vfsmkdir(Vnode *parent, char *path);

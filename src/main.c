@@ -21,9 +21,14 @@ static void ls(Vnode *root, int argc, char **argv) {
         printf("*** no such file [%s]\n", path);
         exit(1);
     }
+    if (!(dir.flags & VFS_DIR)) {
+        printf("*** not a dir [%s]\n", path);
+        exit(1);
+    }
     DirEnt de;
     int i = 0;
-    while (vfsreaddir(&dir, &de, i) == 0) {
+    int rv;
+    while ((rv = vfsreaddir(&dir, &de, i)) == 0) {
         printf("%2i: %3li %s\n", i, de.vnum, de.name);
         i++;
     }
@@ -51,11 +56,11 @@ static void cat(Vnode *root, int argc, char **argv) {
 
 static void create(Vnode *root, int argc, char **argv) {
     if (!argc) {
-        printf("*** cat requires path\n");
+        printf("*** create requires path\n");
         exit(1);
     }
     char *path = argv[0];
-    if (vfscreate(root, path)) {
+    if (vfscreate(root, path, 0)) {
         printf("*** couldn't create [%s]\n", path);
         exit(1);
     }
@@ -101,6 +106,19 @@ static void unlink(Vnode *root, int argc, char **argv) {
     }
 }
 
+
+static void mkdir(Vnode *root, int argc, char **argv) {
+    if (!argc) {
+        printf("*** mkdir requires path\n");
+        exit(1);
+    }
+    char *path = argv[0];
+    if (vfscreate(root, path, 1)) {
+        printf("*** couldn't create [%s]\n", path);
+        exit(1);
+    }
+}
+
 typedef struct {
     char *name;
     void (*func)(Vnode *root, int argc, char **argv);
@@ -112,6 +130,7 @@ static Cmd CMDTAB[] = {
     {"create", create},
     {"write", write},
     {"unlink", unlink},
+    {"mkdir", mkdir},
     {0},
 };
 

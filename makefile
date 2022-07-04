@@ -50,12 +50,9 @@ test-write:
 
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
-	$(BIN) $(IMG) create hello.txt
-	$(BIN) $(IMG) create a.txt
-	$(BIN) $(IMG) create b.txt
-	$(BIN) $(IMG) create c.txt
+	$(BIN) $(IMG) create a/b/c/hello.txt
 	$(BIN) $(IMG) ls /
-	echo hello | $(BIN) $(IMG) write hello.txt
-	$(BIN) $(IMG) cat hello.txt
-	$(BIN) $(IMG) unlink hello.txt
-	$(BIN) $(IMG) ls /
+	$(BIN) $(IMG) ls /a
+	$(BIN) $(IMG) ls /a/b
+	$(BIN) $(IMG) ls /a/b/c
+	$(BIN) $(IMG) ls /a/b/c/hello.txt

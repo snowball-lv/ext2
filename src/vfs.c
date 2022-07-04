@@ -45,15 +45,25 @@ int vfsreaddir(Vnode *parent, DirEnt *dst, int index) {
     return parent->readdir(parent, dst, index);
 }
 
-int vfscreate(Vnode *parent, char *path) {
+int vfscreate(Vnode *parent, char *path, int isdir) {
     char name[MAX_NAME];
     Vnode prev = *parent;
     Vnode tmp;
     while ((path = nextname(name, path))) {
+        printf("name [%s]\n", name);
+        printf("rem [%s]\n", path);
+        int dir = isdir || path[0] != 0;
         if (vfsfind(&prev, &tmp, name)) {
             printf("creating [%s]\n", name);
             if (!prev.create) return -1;
-            return prev.create(&prev, name);
+            if (prev.create(&prev, name, dir)) {
+                printf("*** couldn't create [%s]\n", name);
+                return -1;
+            }
+            if (vfsfind(&prev, &tmp, name)) {
+                printf("*** couldn't find created [%s]\n", name);
+                return -1;
+            }
         }
         prev = tmp;
     }
