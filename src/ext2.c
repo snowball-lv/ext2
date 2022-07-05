@@ -534,6 +534,9 @@ found:;
     if (tinode.numlinks == 0) { 
         freeinode(ext2, target->inum);
     }
+    else if (tinode.numlinks == 1 && hasformat(tinode.mode, EXT2_S_IFDIR)) { 
+        freeinode(ext2, target->inum);
+    }
     if (prev) {
         prev->reclen += target->reclen;
         if (writeblock(ext2, absblock, tmp)) goto end;

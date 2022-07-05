@@ -50,21 +50,9 @@ test-write:
 
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
-	$(BIN) $(IMG) create a/b/c/hello.txt
-	echo hello | $(BIN) $(IMG) write a/b/c/hello.txt
+	$(BIN) $(IMG) create mydir/hello.txt
+	$(BIN) $(IMG) link mydir harddir
+	$(BIN) $(IMG) ls /harddir
+	$(BIN) $(IMG) unlink mydir
+	$(BIN) $(IMG) unlink harddir
 	$(BIN) $(IMG) ls /
-	$(BIN) $(IMG) ls /a
-	$(BIN) $(IMG) ls /a/b
-	$(BIN) $(IMG) ls /a/b/c
-	$(BIN) $(IMG) symlink /a/b/c/hello.txt /a/b/c/lnk-abs.txt
-	$(BIN) $(IMG) symlink hello.txt /a/b/c/lnk-rel.txt
-	$(BIN) $(IMG) link /a/b/c/hello.txt /a/b/c/lnk-hard.txt 
-	$(BIN) $(IMG) ls /a/b/c
-	$(BIN) $(IMG) cat /a/b/c/hello.txt
-	$(BIN) $(IMG) cat /a/b/c/lnk-abs.txt
-	$(BIN) $(IMG) cat /a/b/c/lnk-rel.txt
-	$(BIN) $(IMG) unlink /a/b/c/lnk-abs.txt
-	$(BIN) $(IMG) unlink /a/b/c/lnk-rel.txt
-	$(BIN) $(IMG) unlink /a/b/c/hello.txt
-	$(BIN) $(IMG) unlink /a/b/c/lnk-hard.txt
-	$(BIN) $(IMG) ls /a/b/c
