@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <time.h>
 #include <ext2/vfs.h>
 #include <ext2/fdev.h>
 #include <ext2/ext2.h>
@@ -118,6 +119,56 @@ static void mkdir(Vnode *root, int argc, char **argv) {
     }
 }
 
+static char *filetype(int type) {
+    switch (type & VFS_MASK_FMT) {
+    case VFS_FILE: return "regular file";
+    case VFS_DIR: return "directory";
+    case VFS_LINK: return "symbolic link";
+    }
+    return "???";
+}
+
+static void stat(Vnode *root, int argc, char **argv) {
+    if (!argc) {
+        printf("*** stat requires path\n");
+        exit(1);
+    }
+    char *path = argv[0];
+    Vnode vn;
+    if (vfsresolve(root, root, &vn, path)) {
+        printf("*** no such file [%s]\n", path);
+        exit(1);
+    }
+    Stat stat;
+    if (vfsstat(&vn, &stat)) {
+        printf("*** couldn't stat [%s]\n", path);
+        exit(1);
+    }
+    
+    printf("%6s: %s\n", "File", path);
+    
+    printf("%6s: %-16u", "Size", stat.size);
+    printf("Blocks: %-11u", stat.blocks);
+    printf("IO Block: %-7u", stat.blocksz);
+    printf("%s\n", filetype(stat.mode));
+
+    printf("Device: %-16u", stat.dev);
+    printf("Inode: %-12u", stat.inum);
+    printf("Links: %u\n", stat.numlinks);
+
+    printf("Access: %-19u", stat.mode);
+    printf("Uid: %-19u", stat.uid);
+    printf("Gid: %u\n", stat.gid);
+
+    time_t atim = stat.atime;
+    time_t mtim = stat.mtime;
+    time_t ctim = stat.ctime;
+    printf("Access: %s", ctime(&atim));
+    printf("Modify: %s", ctime(&mtim));
+    printf("Change: %s", ctime(&ctim));
+    printf("Birth: %s\n", "-");
+}
+
 static void symlink(Vnode *root, int argc, char **argv) {
     if (argc < 2) {
         printf("*** symlink requires path and value\n");
@@ -191,6 +242,7 @@ static Cmd CMDTAB[] = {
     {"mkdir", mkdir},
     {"symlink", symlink},
     {"link", link},
+    {"stat", stat},
     {0},
 };
 

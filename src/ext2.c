@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <stdlib.h>
 #include <ext2/vfs.h>
 #include <ext2/ext2.h>
@@ -26,6 +27,10 @@
 #define EXT2_S_IFDIR 0x4000
 #define EXT2_S_IFREG 0x8000
 #define EXT2_S_IFLNK 0xa000
+
+static uint32_t now() {
+    return time(0);
+}
 
 static int hasformat(int mode, int format) {
     return (mode & format) == format;
@@ -198,6 +203,7 @@ static int writeinode(Ext2 *ext2, uint32_t inum, Inode *src) {
         freememblock(tmp);
         return -1;
     }
+    src->ctime = now();
     memcpy(&tmp[blockidx * ext2->inodesz], src, ext2->inodesz);
     if (writeblock(ext2, block, tmp)) {
         freememblock(tmp);
@@ -216,6 +222,8 @@ static int getinodeblock(Ext2 *ext2, Inode *i, uint32_t inum, int idx, int creat
             block = allocblock(ext2);
             if (block < 0) return -1;
             i->blocks[idx] = block;
+            // will break if not allocated in order
+            i->sectors = (idx + 1) * (ext2->blocksz / 512);
             if (writeinode(ext2, inum, i)) {
                 freeblock(ext2, block);
                 return -1;
@@ -234,6 +242,9 @@ static int ext2read(Vnode *vn, void *dst, int off, int count) {
     Ext2 *ext2 = vn->device;
     Inode inode;
     if (readinode(ext2, &inode, vn->vnum))
+        return -1;
+    inode.atime = now();
+    if (writeinode(ext2, vn->vnum, &inode))
         return -1;
     // if (!(inode.mode & EXT2_S_IFREG))
     //     return -1;
@@ -268,8 +279,8 @@ static int ext2truncate(Vnode *vn) {
     if (readinode(ext2, &inode, vn->vnum))
         return -1;
     setinodesize(&inode, 0);
-    inode.sectors = 0;
     memset(inode.blocks, 0, sizeof(inode.blocks));
+    inode.mtime = now();
     if (writeinode(ext2, vn->vnum, &inode))
         return -1;
     return 0;
@@ -304,11 +315,12 @@ static int ext2write(Vnode *vn, int off, int count, void *src) {
         return -1;
     }
     freememblock(tmp);
-    if (off + count > inodesize(&inode)) {
-        setinodesize(&inode, off + count);
-        if (writeinode(ext2, vn->vnum, &inode))
-            return -1;
-    }
+    uint64_t newsize = inodesize(&inode);
+    newsize = off + count > newsize ? off + count : newsize;
+    setinodesize(&inode, newsize);
+    inode.mtime = now();
+    if (writeinode(ext2, vn->vnum, &inode))
+        return -1;
     return count;
 }
 
@@ -390,9 +402,11 @@ static int freeinode(Ext2 *ext2, uint32_t inum) {
     if (readblock(ext2, g.inodebitmap, bitmap)) goto error;
     int idx = (inum - 1) % ext2->sb.inodespergroup;
     if (!testbit(bitmap, idx)) goto unallocated;
+    // set changes
     clearbit(bitmap, idx);
     g.freeinodes++;
     ext2->sb.numfreeinodes++;
+    // flush changes
     if (writeblock(ext2, g.inodebitmap, bitmap)) goto error;
     if (writegroup(ext2, gi, &g)) goto error;
     if (writesb(ext2)) goto error;
@@ -412,9 +426,9 @@ static void fillinode(Inode *dst) {
     dst->mode = 0;
     dst->uid = 0;
     dst->size = 0;
-    dst->atime = 0;
-    dst->ctime = 0;
-    dst->mtime = 0;
+    dst->atime = now();
+    dst->ctime = now();
+    dst->mtime = now();
     dst->dtime = 0;
     dst->gid = 0;
     dst->numlinks = 0;
@@ -504,7 +518,7 @@ static int ext2create(Vnode *parent, char *name, int isdir) {
     return 0;
 }
 
-int ext2unlink(Vnode *parent, char *name) {
+static int ext2unlink(Vnode *parent, char *name) {
     if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
         printf("*** can't unlink special entries\n");
         return -1;
@@ -572,7 +586,7 @@ end:
     return rv;
 }
 
-int ext2symlink(Vnode *parent, char *name, char *value) {
+static int ext2symlink(Vnode *parent, char *name, char *value) {
     if (ext2create(parent, name, 0))
         return -1;
     Vnode vn;
@@ -590,8 +604,29 @@ int ext2symlink(Vnode *parent, char *name, char *value) {
     return 0;
 }
 
-int ext2link(Vnode *old, Vnode *newdir, char *newname) {
+static int ext2link(Vnode *old, Vnode *newdir, char *newname) {
     return mkentry(newdir, newname, old->vnum);
+}
+
+static int ext2stat(Vnode *vn, Stat *dst) {
+    Inode inode;
+    if (readinode(vn->device, &inode, vn->vnum))
+        return -1;
+    memset(dst, 0, sizeof(Stat));
+    dst->dev = (intptr_t)vn->device;
+    dst->inum = vn->vnum;
+    dst->mode = inode.mode;
+    dst->numlinks = inode.numlinks;
+    dst->uid = inode.uid;
+    dst->gid = inode.gid;
+    dst->rdev = 0;
+    dst->size = inodesize(&inode);
+    dst->blocksz = ((Ext2 *)vn->device)->blocksz;
+    dst->blocks = inode.sectors;
+    dst->atime = inode.atime;
+    dst->mtime = inode.mtime;
+    dst->ctime = inode.ctime;
+    return 0;
 }
 
 static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
@@ -612,6 +647,7 @@ static int fillvnode(Ext2 *ext2, Vnode *dst, uint32_t inum) {
     dst->unlink = ext2unlink;
     dst->symlink = ext2symlink;
     dst->link = ext2link;
+    dst->stat = ext2stat;
     return 0;
 }
 

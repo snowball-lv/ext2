@@ -136,3 +136,8 @@ int vfslink(Vnode *old, Vnode *newdir, char *newname) {
     if (!old->link) return -1;
     return old->link(old, newdir, newname);
 }
+
+int vfsstat(Vnode *vn, Stat *dst) {
+    if (!vn->stat) return -1;
+    return vn->stat(vn, dst);
+}

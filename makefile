@@ -51,13 +51,5 @@ test-write:
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
 	$(BIN) $(IMG) create hello.txt
-	$(BIN) $(IMG) unlink hello.txt
-	$(BIN) $(IMG) create hello.txt
-	$(BIN) $(IMG) unlink hello.txt
-	$(BIN) $(IMG) create hello.txt
-	$(BIN) $(IMG) unlink hello.txt
-	$(BIN) $(IMG) create hello.txt
-	$(BIN) $(IMG) unlink hello.txt
-	$(BIN) $(IMG) create hello.txt
-	$(BIN) $(IMG) unlink hello.txt
-	$(BIN) $(IMG) ls /
+	echo hello | $(BIN) $(IMG) write hello.txt
+	$(BIN) $(IMG) stat hello.txt
