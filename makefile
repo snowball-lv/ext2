@@ -50,9 +50,14 @@ test-write:
 
 test: $(IMG) all
 	$(BIN) $(IMG) ls /
-	$(BIN) $(IMG) create mydir/hello.txt
-	$(BIN) $(IMG) link mydir harddir
-	$(BIN) $(IMG) ls /harddir
-	$(BIN) $(IMG) unlink mydir
-	$(BIN) $(IMG) unlink harddir
+	$(BIN) $(IMG) create hello.txt
+	$(BIN) $(IMG) unlink hello.txt
+	$(BIN) $(IMG) create hello.txt
+	$(BIN) $(IMG) unlink hello.txt
+	$(BIN) $(IMG) create hello.txt
+	$(BIN) $(IMG) unlink hello.txt
+	$(BIN) $(IMG) create hello.txt
+	$(BIN) $(IMG) unlink hello.txt
+	$(BIN) $(IMG) create hello.txt
+	$(BIN) $(IMG) unlink hello.txt
 	$(BIN) $(IMG) ls /

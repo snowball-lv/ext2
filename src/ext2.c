@@ -149,6 +149,10 @@ static void setbit(void *buf, int num) {
     ((char *)buf)[num / 8] |= 1 << (num % 8);
 }
 
+static void clearbit(void *buf, int num) {
+    ((char *)buf)[num / 8] &= ~(1 << (num % 8));
+}
+
 static int allocblock(Ext2 *ext2) {
     uint8_t *bitmap = allocmemblock(ext2);
     int block = -1;
@@ -359,18 +363,18 @@ static uint32_t allocinode(Ext2 *ext2) {
         if (readblock(ext2, g.inodebitmap, bitmap))
             goto end;
         for (int i = 0; i < ext2->sb.inodespergroup; i++) {
-            int byte = i / 8;
-            int bit = i % 8;
-            if ((!(bitmap[byte] & (1 << bit)))) {
-                ext2->sb.numfreeinodes--;
-                g.freeinodes--;
-                bitmap[byte] |= 1 << bit;
-                if (writesb(ext2)) goto end;
-                if (writegroup(ext2, gi, &g)) goto end;
-                if (writeblock(ext2, g.inodebitmap, bitmap)) goto end;
-                inum = gi * ext2->sb.inodespergroup + i + 1;
-                goto end;
-            }
+            if (testbit(bitmap, i)) continue;
+            // set changes
+            ext2->sb.numfreeinodes--;
+            g.freeinodes--;
+            setbit(bitmap, i);
+            // flush changes
+            if (writesb(ext2)) goto end;
+            if (writegroup(ext2, gi, &g)) goto end;
+            if (writeblock(ext2, g.inodebitmap, bitmap)) goto end;
+            // set found inum
+            inum = gi * ext2->sb.inodespergroup + i + 1;
+            goto end;
         }
     }
 end:
@@ -378,9 +382,29 @@ end:
     return inum;
 }
 
-static void freeinode(Ext2 *ext2, uint32_t inum) {
-    printf("freeing inode %u\n", inum);
-    // TODO
+static int freeinode(Ext2 *ext2, uint32_t inum) {
+    uint8_t *bitmap = allocmemblock(ext2);
+    int gi = (inum - 1) / ext2->sb.inodespergroup;
+    Group g;
+    if (readgroup(ext2, &g, gi)) goto error;
+    if (readblock(ext2, g.inodebitmap, bitmap)) goto error;
+    int idx = (inum - 1) % ext2->sb.inodespergroup;
+    if (!testbit(bitmap, idx)) goto unallocated;
+    clearbit(bitmap, idx);
+    g.freeinodes++;
+    ext2->sb.numfreeinodes++;
+    if (writeblock(ext2, g.inodebitmap, bitmap)) goto error;
+    if (writegroup(ext2, gi, &g)) goto error;
+    if (writesb(ext2)) goto error;
+    // printf("successfully freed inode %u\n", inum);
+    freememblock(bitmap);
+    return 0;
+unallocated:
+    printf("*** inode %u already free\n", inum);
+error:
+    printf("*** couldn't free inode %u\n", inum);
+    freememblock(bitmap);
+    return -1;
 }
 
 static void fillinode(Inode *dst) {
