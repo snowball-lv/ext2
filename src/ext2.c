@@ -118,11 +118,11 @@ static int writeblock(Ext2 *ext2, uint32_t block, void *src) {
     return writedev(ext2, block * ext2->blocksz, ext2->blocksz, src);
 }
 
-static int flushsb(Ext2 *ext2) {
+static int writesb(Ext2 *ext2) {
     return writedev(ext2, 1024, sizeof(Superblock), &ext2->sb);
 }
 
-static int flushgroup(Ext2 *ext2, int i, Group *src) {
+static int writegroup(Ext2 *ext2, int i, Group *src) {
     if (i >= ext2->numgroups)
         return -1;
     char *tmp = allocmemblock(ext2);
@@ -164,8 +164,8 @@ static int allocblock(Ext2 *ext2) {
             g.freeblocks--;
             setbit(bitmap, i);
             // flush changes
-            if (flushsb(ext2)) goto end;
-            if (flushgroup(ext2, gi, &g)) goto end;
+            if (writesb(ext2)) goto end;
+            if (writegroup(ext2, gi, &g)) goto end;
             if (writeblock(ext2, g.blockbitmap, bitmap)) goto end;
             // set found block number
             block = ext2->sb.firstblock + gi * ext2->sb.blockspergroup + i;
@@ -203,18 +203,16 @@ static int writeinode(Ext2 *ext2, uint32_t inum, Inode *src) {
     return 0;
 }
 
-static int getinodeblock(Ext2 *ext2, uint32_t inum, int idx, int create) {
+static int getinodeblock(Ext2 *ext2, Inode *i, uint32_t inum, int idx, int create) {
     if (idx < 0) return -1;
-    Inode inode;
-    if (readinode(ext2, &inode, inum)) return -1;
-    if (idx * ext2->blocksz >= inodesize(&inode) && !create) return -1;
+    if (idx * ext2->blocksz >= inodesize(i) && !create) return -1;
     if (idx < 12) {
-        int block = inode.blocks[idx];
+        int block = i->blocks[idx];
         if (!block && create) {
             block = allocblock(ext2);
             if (block < 0) return -1;
-            inode.blocks[idx] = block;
-            if (writeinode(ext2, inum, &inode)) {
+            i->blocks[idx] = block;
+            if (writeinode(ext2, inum, i)) {
                 freeblock(ext2, block);
                 return -1;
             }
@@ -243,7 +241,7 @@ static int ext2read(Vnode *vn, void *dst, int off, int count) {
     char *tmp = allocmemblock(ext2);
     while (off < end) {
         int relblock = off / ext2->blocksz;
-        int absblock = getinodeblock(ext2, vn->vnum, relblock, 0);
+        int absblock = getinodeblock(ext2, &inode, vn->vnum, relblock, 0);
         if (absblock < 0) goto error;
         if (readblock(ext2, absblock, tmp)) goto error;
         int blockoff = off % ext2->blocksz;
@@ -286,14 +284,11 @@ static int ext2write(Vnode *vn, int off, int count, void *src) {
     //     return -1;
     // }
     int relblock = off / ext2->blocksz;
-    int absblock = getinodeblock(ext2, vn->vnum, relblock, 1);
+    int absblock = getinodeblock(ext2, &inode, vn->vnum, relblock, 1);
     if (absblock < 0) {
         printf("*** block #%i doesn't exist\n", relblock);
         return -1;
     }
-    // refresh inode
-    if (readinode(ext2, &inode, vn->vnum))
-        return -1;
     char *tmp = allocmemblock(ext2);
     if (readblock(ext2, absblock, tmp)) {
         freememblock(tmp);
@@ -370,8 +365,8 @@ static uint32_t allocinode(Ext2 *ext2) {
                 ext2->sb.numfreeinodes--;
                 g.freeinodes--;
                 bitmap[byte] |= 1 << bit;
-                if (flushsb(ext2)) goto end;
-                if (flushgroup(ext2, gi, &g)) goto end;
+                if (writesb(ext2)) goto end;
+                if (writegroup(ext2, gi, &g)) goto end;
                 if (writeblock(ext2, g.inodebitmap, bitmap)) goto end;
                 inum = gi * ext2->sb.inodespergroup + i + 1;
                 goto end;
@@ -505,7 +500,7 @@ int ext2unlink(Vnode *parent, char *name) {
     int boff = 0;
     while (off < size) {
         int relblock = off / ext2->blocksz;
-        absblock = getinodeblock(ext2, parent->vnum, relblock, 0);
+        absblock = getinodeblock(ext2, &inode, parent->vnum, relblock, 0);
         if (absblock < 0) goto end;
         if (readblock(ext2, absblock, tmp)) goto end;
         prev = 0;
