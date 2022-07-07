@@ -30,26 +30,9 @@ clean:
 
 $(IMG):
 	mkdir root
-	dd bs=1024 count=1 if=/dev/urandom of=root/blocks-one.bin
-	dd bs=1024 count=5 if=/dev/urandom of=root/blocks-direct.bin
-	./genfile.rb 5 >root/blocks.txt
-	echo hello >root/file.txt
-	touch root/tmp.bin
+	./genfile.rb 1 >root/blocks-one.txt
+	./genfile.rb 1 >root/blocks-direct.txt
 	genext2fs -b $$((16 * 1024)) -d root $(IMG)
 
-test-read:
-	$(BIN) $(IMG) cat /file.txt | diff - root/file.txt
-	$(BIN) $(IMG) cat /blocks-one.bin | diff - root/blocks-one.bin
-	$(BIN) $(IMG) cat /blocks-direct.bin | diff - root/blocks-direct.bin
-
-test-write:
-	cat root/blocks-one.bin | $(BIN) $(IMG) write /tmp.bin
-	$(BIN) $(IMG) cat /tmp.bin | diff - root/blocks-one.bin
-	cat root/blocks-direct.bin | $(BIN) $(IMG) write /tmp.bin
-	$(BIN) $(IMG) cat /tmp.bin | diff - root/blocks-direct.bin
-
 test: $(IMG) all
-	$(BIN) $(IMG) ls
-	$(BIN) $(IMG) create hello.txt
-	echo hello | $(BIN) $(IMG) write hello.txt
-	$(BIN) $(IMG) stat hello.txt
+	$(BIN) $(IMG) ls /

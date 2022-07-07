@@ -13,15 +13,15 @@ typedef struct {
 } Help;
 
 static const Help HELP[] = {
-    "ls path", "list directory content",
-    "cat path", "print file content",
-    "stat path", "print information about file or directory",
-    "write path", "overwrite file with stdin",
-    "create path", "create file",
-    "mkdir path", "create directory",
-    "unlink path", "delete file or directory",
-    "symlink target path", "create symlink 'path' that points to 'target'",
-    "link oldpath newpath", "create hard link 'newpath' referencing inode of 'oldpath'",
+    {"ls path", "list directory content"},
+    {"cat path", "print file content"},
+    {"stat path", "print information about file or directory"},
+    {"write path", "overwrite file with stdin"},
+    {"create path", "create file"},
+    {"mkdir path", "create directory"},
+    {"unlink path", "delete file or directory"},
+    {"symlink target path", "create symlink 'path' that points to 'target'"},
+    {"link oldpath newpath", "create hard link 'newpath' referencing inode of 'oldpath'"},
     {0},
 };
 
