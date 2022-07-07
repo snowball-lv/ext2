@@ -7,14 +7,37 @@
 #include <ext2/fdev.h>
 #include <ext2/ext2.h>
 
+typedef struct {
+    char *cmd;
+    char *text;
+} Help;
+
+static const Help HELP[] = {
+    "ls path", "list directory content",
+    "cat path", "print file content",
+    "write path", "overwrite file with stdin",
+    "create path", "create file",
+    "mkdir path", "create directory",
+    "unlink path", "delete file or directory",
+    "symlink target path", "create symlink 'path' that points to 'target'",
+    "link oldpath newpath", "create hard link 'newpath' referencing inode of 'oldpath'",
+    {0},
+};
+
 static void usage() {
-    printf("Usage:\n%4sext2 image command\n", "");
+    printf("Usage:\n%4sext2 image cmd [operand...]\n", "");
+    printf("Commands:\n");
+    for (const Help *h = HELP; h->cmd; h++) {
+        printf("%4s%-22s%s\n",
+                "", h->cmd, h->text);
+    }
+    exit(1);
 }
 
 static void ls(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** ls requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     Vnode dir;
@@ -38,7 +61,7 @@ static void ls(Vnode *root, int argc, char **argv) {
 static void cat(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** cat requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     Vnode file;
@@ -58,7 +81,7 @@ static void cat(Vnode *root, int argc, char **argv) {
 static void create(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** create requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     if (vfscreate(root, path, 0)) {
@@ -70,7 +93,7 @@ static void create(Vnode *root, int argc, char **argv) {
 static void write(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** write requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     Vnode file;
@@ -98,7 +121,7 @@ static void write(Vnode *root, int argc, char **argv) {
 static void unlink(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** unlink requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     if (vfsunlink(root, path)) {
@@ -110,7 +133,7 @@ static void unlink(Vnode *root, int argc, char **argv) {
 static void mkdir(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** mkdir requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     if (vfscreate(root, path, 1)) {
@@ -131,7 +154,7 @@ static char *filetype(int type) {
 static void stat(Vnode *root, int argc, char **argv) {
     if (!argc) {
         printf("*** stat requires path\n");
-        exit(1);
+        usage();
     }
     char *path = argv[0];
     Vnode vn;
@@ -172,7 +195,7 @@ static void stat(Vnode *root, int argc, char **argv) {
 static void symlink(Vnode *root, int argc, char **argv) {
     if (argc < 2) {
         printf("*** symlink requires path and value\n");
-        exit(1);
+        usage();
     }
     char *value = argv[0];
     char *path = argv[1];
@@ -202,7 +225,7 @@ static int parsepath(char *dir, char *name, char *path) {
 static void link(Vnode *root, int argc, char **argv) {
     if (argc < 2) {
         printf("*** link requires old and new path\n");
-        exit(1);
+        usage();
     }
     char *oldpath = argv[0];
     char *newpath = argv[1];

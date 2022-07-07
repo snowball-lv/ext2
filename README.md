@@ -1,21 +1,22 @@
-Command line tool and library for managing ext2 images.
-Exercise for designing filesystem drivers to plug into a VFS layer.
+Command line tool for manipulating ext2 images.
+An exercise in designing a VFS layer.
 
 ## Usage
 
 ```bash
-    ./bin/ext2 disk.img cmd path
+    ./bin/ext2 disk.img cmd [operand...]
 ```
 
 ### Commands supported
 
-- `ls` - list directory content
-- `cat` - print file content
-- `touch` - create file
-- `mkdir` - create directory
-- `write` - overwrite file with `stdin`
-- `rm` - delete file
-- `rmdir` - dlete directory
+- `ls path` - list directory content
+- `cat path` - print file content
+- `write path` - overwrite file with `stdin`
+- `create path` - create file
+- `mkdir path` - create directory
+- `unlink path` - delete file or directory
+- `symlink target linkpath` - create symlink `linkpath` that points to `target`
+- `link oldpath newpath` - create hard link `newpath` referencing inode of `oldpath`
 
 ## Build
 

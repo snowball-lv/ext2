@@ -49,7 +49,7 @@ test-write:
 	$(BIN) $(IMG) cat /tmp.bin | diff - root/blocks-direct.bin
 
 test: $(IMG) all
-	$(BIN) $(IMG) ls /
+	$(BIN) $(IMG) ls
 	$(BIN) $(IMG) create hello.txt
 	echo hello | $(BIN) $(IMG) write hello.txt
 	$(BIN) $(IMG) stat hello.txt
