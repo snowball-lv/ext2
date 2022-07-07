@@ -15,6 +15,7 @@ typedef struct {
 static const Help HELP[] = {
     "ls path", "list directory content",
     "cat path", "print file content",
+    "stat path", "print information about file or directory",
     "write path", "overwrite file with stdin",
     "create path", "create file",
     "mkdir path", "create directory",

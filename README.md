@@ -11,6 +11,7 @@ An exercise in designing a VFS layer.
 
 - `ls path` - list directory content
 - `cat path` - print file content
+- `stat path` - print information about file or directory
 - `write path` - overwrite file with `stdin`
 - `create path` - create file
 - `mkdir path` - create directory
