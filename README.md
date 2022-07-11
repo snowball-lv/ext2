@@ -1,4 +1,5 @@
-Command line tool for manipulating ext2 images.
+WIP.  
+Command line tool for manipulating ext2 images.  
 An exercise in designing a VFS layer.
 
 ## Usage
